@@ -1,0 +1,36 @@
+---
+title: {{ title }}
+author: {{ author }}
+date: {{ date }}
+type: {{ type }}
+tags: {{ tags | tojson }}
+source: {{ source }}
+{% if douyin_id %}
+douyin_id: {{ douyin_id }}
+{% endif %}
+---
+
+## 基本信息
+
+| 项目 | 内容 |
+|------|------|
+| 作者 | {{ author }} |
+| 标题 | {{ title }} |
+| 发布日期 | {{ date }} |
+| 来源 | [抖音]({{ source }}) |
+{% if douyin_id %}
+| 视频 ID | {{ douyin_id }} |
+{% endif %}
+| 标签 | {{ tags | join('、') }} |
+
+## 视频文案
+
+{{ body }}
+
+{% if related_notes %}
+## 相关笔记
+
+{% for note in related_notes %}
+- [[{{ note }}]]
+{%- endfor %}
+{% endif %}

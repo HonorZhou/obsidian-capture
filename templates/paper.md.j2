@@ -1,0 +1,30 @@
+---
+title: {{ title }}
+author: {{ author }}
+date: {{ date }}
+type: {{ type }}
+tags: {{ tags | tojson }}
+source: {{ source }}
+---
+
+## 论文信息
+
+| 项目 | 内容 |
+|------|------|
+| 标题 | {{ title }} |
+| 作者 | {{ author }} |
+| 日期 | {{ date }} |
+| 来源 | [arXiv]({{ source }}) |
+| 标签 | {{ tags | join('、') }} |
+
+## 摘要与正文
+
+{{ body }}
+
+{% if related_notes %}
+## 相关笔记
+
+{% for note in related_notes %}
+- [[{{ note }}]]
+{%- endfor %}
+{% endif %}
