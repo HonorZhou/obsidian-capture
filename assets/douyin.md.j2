@@ -2,35 +2,32 @@
 title: {{ title }}
 author: {{ author }}
 date: {{ date }}
-type: {{ type }}
-tags: {{ tags | tojson }}
+type: 抖音
+tags: [{{ tags | join(', ') }}]
 source: {{ source }}
-{% if douyin_id %}
 douyin_id: {{ douyin_id }}
-{% endif %}
 ---
 
-## 基本信息
+# {{ title }}
+
+## 视频信息
 
 | 项目 | 内容 |
 |------|------|
 | 作者 | {{ author }} |
-| 标题 | {{ title }} |
 | 发布日期 | {{ date }} |
-| 来源 | [抖音]({{ source }}) |
-{% if douyin_id %}
-| 视频 ID | {{ douyin_id }} |
-{% endif %}
-| 标签 | {{ tags | join('、') }} |
+| 视频描述 | {{ description }} |
 
-## 视频文案
+## 核心内容
 
 {{ body }}
 
+## 与你的关联分析
+
 {% if related_notes %}
-## 相关笔记
+## 相关资料
 
 {% for note in related_notes %}
 - [[{{ note }}]]
-{%- endfor %}
+{% endfor %}
 {% endif %}

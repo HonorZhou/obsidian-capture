@@ -1,0 +1,22 @@
+---
+title: {{ title }}
+author: {{ author }}
+date: {{ date }}
+type: 公众号
+tags: [{{ tags | join(', ') }}]
+source: {{ source }}
+---
+
+# {{ author }}：{{ title }}
+
+{{ body }}
+
+## 与你的关联分析
+
+{% if related_notes %}
+## 相关资料
+
+{% for note in related_notes %}
+- [[{{ note }}]]
+{% endfor %}
+{% endif %}

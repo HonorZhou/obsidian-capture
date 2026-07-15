@@ -2,29 +2,35 @@
 title: {{ title }}
 author: {{ author }}
 date: {{ date }}
-type: {{ type }}
-tags: {{ tags | tojson }}
+type: 论文
+tags: [{{ tags | join(', ') }}]
 source: {{ source }}
 ---
+
+# {{ title }}
 
 ## 论文信息
 
 | 项目 | 内容 |
 |------|------|
-| 标题 | {{ title }} |
 | 作者 | {{ author }} |
-| 日期 | {{ date }} |
-| 来源 | [arXiv]({{ source }}) |
-| 标签 | {{ tags | join('、') }} |
+| 发布日期 | {{ date }} |
+| 链接 | {{ source }} |
 
-## 摘要与正文
+## 摘要
 
-{{ body }}
+{{ abstract }}
+
+## 核心方法
+
+{{ methods }}
+
+## 与你的关联分析
 
 {% if related_notes %}
-## 相关笔记
+## 相关资料
 
 {% for note in related_notes %}
 - [[{{ note }}]]
-{%- endfor %}
+{% endfor %}
 {% endif %}
