@@ -7,15 +7,17 @@
 ## 功能特性
 
 - **多平台支持**：
-  - 微信公众号（mp.weixin.qq.com）
-  - 抖音视频（v.douyin.com，通过本地 Whisper API 转写）
+  - 微信公众号（mp.weixin.qq.com，`scripts/wechat_fetch.py` requests 直抓）
+  - 抖音视频（v.douyin.com，`scripts/douyin_fetch.py` yt-dlp 下载 + `scripts/transcribe_dy.py` faster-whisper CUDA 转写全文）
   - 知乎、CSDN、少数派等图文文章
   - 学术论文（arXiv PDF）
 - **结构化输出**：YAML frontmatter 含标题、作者、日期、类型、标签、来源
-- **去重检查**：通过来源 URL 自动跳过已入库文章
+- **去重检查**：通过来源 URL 自动跳过已入库文章；抖音按 `douyin_id` 精确查重
 - **关联笔记**：基于标签匹配自动发现相关笔记并添加双向链接
 - **高度可配置**：Jinja2 模板、超时时间、网络代理
 - **双重交付**：CLI 工具 + Marvis Skill，可独立使用或集成到 AI 助手
+
+> 2026-08 起，抓取脚本从浏览器自动化（web_fetch/browser-agent）迁移为独立 Python 脚本（`scripts/wechat_fetch.py` / `douyin_fetch.py` / `transcribe_dy.py`），更稳定、可离线重试。新脚本同时收录于 GitHub `HonorZhou/honorzhou-skills`（douyin-to-obsidian / wechat-to-obsidian skill）。
 
 ---
 

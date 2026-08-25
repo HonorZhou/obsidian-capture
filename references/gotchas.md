@@ -61,3 +61,59 @@ douyin_id 仅抖音需要。其他来源不出现此字段。
 ## 去重用 source URL 精确匹配
 
 去重依据是 frontmatter 的 source 字段（原始 URL），不是标题。同一篇文章可能在不同时间被不同标题转发，但 source URL 唯一。
+
+## 2026-08 新增坑点（wechat_fetch / douyin_fetch 时代）
+
+### 微信正文 div 正则必须宽松匹配
+
+真实 HTML 中 `js_content` 的 id 前有 class 等属性，严格写 `<div id="js_content"` 匹配不到：
+
+```python
+re.search(r'<div[^>]*id="js_content"[^>]*>(.*?)<script', raw, re.S)
+```
+
+### 微信标题正则带 .html(false) 后缀
+
+`var msg_title = 'xxx'.html(false);` 带 `.html(false)` 结尾，须匹配：
+
+```python
+r"var msg_title = '(.*?)'\.html\(false\)"
+```
+
+失败再回退 `og:title`。作者同理：`var nickname = htmlDecode\("(.*?)"\);`，失败回退 `og:article:author`。
+
+### web_fetch 只能拿 JS shell，微信必须 requests 直抓
+
+网页抓取工具拿到的公众号页面是 JS 壳，正文/元数据全在服务端渲染。必须用 `wechat_fetch.py` 的 requests 直抓 raw HTML。微信对 httpx 反爬（返回空），勿用 httpx 后端。
+
+### douyin_fetch.py 参数是 --mode audio-only
+
+不是 `--audio-only`（会报 unrecognized arguments）。完整：`python douyin_fetch.py <链接> --mode audio-only --out temp/dy_<name>`。
+
+### 抖音入库前必须按 douyin_id 查重
+
+2026-08-25 实测：赛文乔伊"网球人机对打"视频，08-22 已按旧标题入库，08-25 用新标题重复下载+转写+建笔记才发现——浪费一次下载+CUDA 转写。**元数据拿到后先 Grep `douyin_id` 再动手**。
+
+### yt-dlp --json 偶发抖动
+
+`douyin_fetch.py --json` 偶发 `'NoneType' object has no attribute 'get'` → 直接重试即可（网络抖动）。
+
+### 后台任务 ID 可能丢失
+
+长任务（下载/转写）后台运行时 task_id 可能查不到——用文件系统核查产物（`temp/dy_xxx/*.m4a`、`transcript.json`），别依赖 task_id 轮询。
+
+### 抖音转写 ASR 专名必须人工校正
+
+faster-whisper medium 中文口播常见同音错字，入库笔记前必须订正：
+
+- 行业术语：巨深智能→具身智能、清言/清严/轻言精准→（按上下文还原公司名，不确定问用户）
+- 同音字：中式→中试、弊常→臂长、重应设→重定向、一场→异常、导班→倒班、常委→常态
+- 人名/公司名拿不准 → 笔记尾部标注"待核实"，或问用户确认（2026-08-25 用户确认"清研精准"纠正了 ASR 推断的"清岩智能"）
+
+### 转写产物保留 transcript.json，删大文件
+
+入库完成后删除 m4a/mp4 大文件，保留 `transcript.json`（笔记引用来源指向它，留作证据）。
+
+### 抖音笔记目录结构已变
+
+早期版本用 `{douyin_id}_{标题}/` 子目录（封面图无处存放），2026-08 纯文字入库惯例已改为 `01-文章/抖音/` 根目录单文件 `{作者}-{标题}-{日期}.md`。新笔记一律根目录单文件。

@@ -23,7 +23,10 @@ obsidian-capture/
 │   └── templates.md            # Output templates per source
 ├── scripts/
 │   ├── verify_note.ps1         # Post-write frontmatter validation
-│   └── check_dup.ps1           # Deduplication check
+│   ├── check_dup.ps1           # Deduplication check
+│   ├── wechat_fetch.py         # WeChat: requests raw-HTML fetch + md conversion (2026-08)
+│   ├── douyin_fetch.py         # Douyin: yt-dlp + cft cookie metadata/audio download (2026-08)
+│   └── transcribe_dy.py        # Audio → transcript.json via faster-whisper medium + CUDA (2026-08)
 ├── assets/
 │   ├── wechat.md.j2
 │   ├── douyin.md.j2
@@ -36,8 +39,8 @@ obsidian-capture/
 
 | Source | URL Pattern | Method |
 |--------|-------------|--------|
-| 微信公众号 | `mp.weixin.qq.com/s/...` | playwright backend |
-| 抖音 | `v.douyin.com/...` or `douyin.com/video/...` | browser-agent |
+| 微信公众号 | `mp.weixin.qq.com/s/...` | `scripts/wechat_fetch.py` (requests raw HTML) |
+| 抖音 | `v.douyin.com/...` or `douyin.com/video/...` | `scripts/douyin_fetch.py` (yt-dlp + cft cookie) → `scripts/transcribe_dy.py` (faster-whisper CUDA) |
 | 知乎 / CSDN / 少数派 | respective domains | auto → playwright fallback |
 | arXiv | `arxiv.org/abs/...` | auto |
 
@@ -45,9 +48,11 @@ obsidian-capture/
 
 1. Never use `write_file` — triggers douyin-capture AIGC injection. Use PowerShell WriteAllText.
 2. Always verify publication date from source — never default to today.
-3. WeChat articles must use `web_fetch(backend="playwright")`.
+3. WeChat: use `scripts/wechat_fetch.py` (requests). `web_fetch` only gets the JS shell; httpx is blocked.
 4. AIGC fields (ContentProducer, ProduceID, Label, etc.) are blacklisted.
 5. Post-write verification is mandatory — read first 15 lines to confirm clean.
+6. Douyin: always dedupe by `douyin_id` before downloading (same video can appear with a different title).
+7. Douyin CLI flag is `--mode audio-only` (not `--audio-only`); ASR output needs manual proper-noun fixes.
 
 See `references/gotchas.md` for the full list.
 
