@@ -48,7 +48,7 @@ douyin_id 仅抖音需要。其他来源不出现此字段。
 
 ## 抖音笔记目录结构
 
-抖音笔记需要创建 `{douyin_id}_{标题}/` 子目录，笔记文件和封面图放在该目录内。直接放在 `01-文章/抖音/` 根目录会导致封面图无处存放。
+~~需要创建 `{douyin_id}_{标题}/` 子目录~~ —— **此条已作废**。2026-08 起纯文字入库惯例改为 `01-文章/抖音/` **根目录单文件** `{作者}-{标题}-{日期}.md`，逐字稿证据件按 `<笔记名>_transcript.json` / `.txt` 同名并存。详见文末「抖音笔记目录结构已变」。旧条文若被照用，会让笔记脱离索引与 `01-文章/抖音/` 的扁平检索路径。
 
 ## 微信公众号 author 字段
 
@@ -117,3 +117,84 @@ faster-whisper medium 中文口播常见同音错字，入库笔记前必须订�
 ### 抖音笔记目录结构已变
 
 早期版本用 `{douyin_id}_{标题}/` 子目录（封面图无处存放），2026-08 纯文字入库惯例已改为 `01-文章/抖音/` 根目录单文件 `{作者}-{标题}-{日期}.md`。新笔记一律根目录单文件。
+
+## 2026-08-30 新增坑点（第二台设备实机跑通：i7-11800H + RTX 3050 Ti 4GB + 16GB 内存）
+
+以下每一条都在这一天的连续 5 条视频入库中真实踩过。
+
+### 5050 后端彻底失效，别再试
+
+`douyin-capture` 后端（`127.0.0.1:5050`，靠解析 `_ROUTER_DATA`）已被抖音改版**全网击穿**：分享页只返回 JS 壳，`_ROUTER_DATA` 里只有 `loaderData` 的页面上下文字段，**没有 item_list / desc / author / statistics**。旧版 `iteminfo` 接口也返回空。唯一正解是 yt-dlp。
+
+### msToken 走响应头，必须拦截后手动提升为 cookie
+
+yt-dlp 的 Douyin 提取器要求 `Fresh cookies`，实测它真正需要的是 **`msToken`**：
+
+- `msToken` **不再通过 Set-Cookie 下发**，而是出现在响应的 **`x-ms-token` 头**里；`webid` 藏在 passport 接口 JSON 中。所以轮询 cookie 永远等不到它们。
+- 解法：Playwright 里 `page.on("response", ...)` 捕获 `x-ms-token`，再用 `ctx.add_cookies()` 以 `.douyin.com` 域写回，最后导出 Netscape `cookies.txt`。
+- **只要 `msToken` 就够，`webid` 缺失不影响抓取。**
+- 只自助注册匿名 `ttwid`（POST `ttwid.bytedance.com/ttwid/union/register/`，返回 `union register success`）**不够**，yt-dlp 仍判 cookie 不新鲜。
+- 无头 Chromium 需带反自动化参数（`--disable-blink-features=AutomationControlled`、`navigator.webdriver` 打码）**加持久化 profile**，否则只采到 9 个基础 cookie、拿不到签名项；配好后能采到 38 项含 `bd_ticket_guard_client_data` / `odin_tt` / `bit_env`。
+
+### 绝不读用户正在使用的浏览器
+
+`--cookies-from-browser edge` 在 Edge 运行时会 **`PermissionError: [Errno 13] Permission denied: ...\Edge\User Data\Default\Network\Cookies`**（yt-dlp issue #7271）——浏览器独占锁定 cookie 库，连复制都不行。而且要求用户退出浏览器本身就是扰民。正确做法：**用 Playwright 自带 Chromium + 独立 profile 自己采 cookie**，写进 `cookies.txt` 后用 `--cookies`。
+
+### cookie 与下载必须在同一命令里背靠背
+
+`msToken` 时效只有几分钟。实测：刷完 cookie → 抓元数据（成功）→ 查格式列表 → 再下载，**就报 `Fresh cookies are needed` 了**。把「刷 cookie + 下载」写进同一个 shell 调用连续执行；中间不要插入耗时请求。
+
+### `-S size` 会选到 4 倍大的文件
+
+想挑最小文件而用 `-S size`，结果选中的是 `download_addr-*`（带水印的下载源，实测 44.5MB），而不是真正的最小档 `bytevc1_540p_*`（h265，同片仅 8–30MB）。**正确做法：自己解析 `-J` 输出的 `formats[].filesize` 排序**，取 `bytevc1_540p*`。
+
+### 同一格式有多个 CDN 镜像 host，部分不可达
+
+每个 format_id 都有 `-0/-1/-2/-3` 四个变体，分别指向 `api-play-hl.amemv.com` / `api.amemv.com` / `v6-default.365yg.com` / `v95-ynkmtc-default.365yg.com` 等。实测 **`v95-ynkmtc-*` 完全连不通**（connect timeout），而 `v6-default`、`v11-default`、amemv API 可达。
+
+- 用 `-f "id-3/id-2/id-0"` 写**降级链**，不要只给一个格式号。
+- 探活技巧：`curl -m 8 https://<host>/` 返回 **403/404 即为可达**（根路径无资源正常），返回 `000` 才是真不可达。
+
+### GPU 缺库时：cuDNN 已在包里，通常只缺 cuBLAS
+
+`ctranslate2` 报 `Library cublas64_12.dll is not found` 时，**不要急着下 1GB 的 cuBLAS+cuDNN**：
+
+- **`cudnn64_9.dll` 本来就打包在 `site-packages/ctranslate2/` 里**（和 `ctranslate2.dll`、`libiomp5md.dll` 同目录）。
+- 唯一缺的就是 `cublas64_12.dll`。机器上任意一个装了 `nvidia-cublas-cu12` 的 venv（`site-packages/nvidia/cublas/bin/`）里现成有，**把 `cublas64_12.dll` + `cublasLt64_12.dll` 拷进 ctranslate2 目录即可点亮 CUDA**，零下载。
+- 验证方式：`ctranslate2.get_cuda_device_count()` 返回 1 只说明能**枚举**设备，`WhisperModel(..., device="cuda")` 能加载也只说明权重进得去显存——**必须真跑一次 transcribe 才会暴露 cuBLAS 缺失**。
+- 效果：medium float16 在 RTX 3050 Ti 上 **4.6 倍速**（125s→27s，515s→约 1.5min）。走 GPU 几乎不占内存，反而是内存紧张时的首选路径。
+
+### 国内网络：pip 与 HF 都必须走镜像
+
+- PyPI 直连在这条网路上会**大文件反复断流零进度重连**（`resume incomplete download (0 bytes/...)`），严重时索引查询直接返回空、报 `from versions: none`。换 `-i https://pypi.tuna.tsinghua.edu.cn/simple/` 后立刻正常（`mirrors.aliyun.com` 亦可）。
+- HuggingFace 下载缺 `model.bin` 且报 `cas-server.xethub.hf.co ... 401`：这是 **xet 加速协议绕过镜像直连官方 CAS**。设 `HF_HUB_DISABLE_XET=1` + `HF_ENDPOINT=https://hf-mirror.com` 走普通 HTTP 才能拿到完整快照。
+
+### 脚本会吞掉 yt-dlp 的真实报错
+
+`douyin_fetch.py --json` 在 yt-dlp 失败时，因为 yt-dlp 输出字符串 `null`、`json.loads("null")` 得 None，最终抛出的是**误导性的 `'NoneType' object has no attribute 'get'`**，且 `stderr` 被丢弃。排查时**务必跑原生 `python -m yt_dlp -J <url>` 看 stderr**，否则会误判成"网络抖动，重试即可"。（本条已修：脚本改抛真实错误。）
+
+### ASR 中文输出偶发繁体，入库前要过 zhconv
+
+faster-whisper 对同一台机器、同一 model 的多条视频，输出可能是**繁体**（实测《滚雪球》30 番外 5309 字全篇繁体）。入库前统一：
+
+```python
+from zhconv import convert
+convert(text, "zh-cn")   # text 与每个 segment.text 都要转
+```
+
+`zhconv` 本来就在抖音入库 SOP 的依赖清单里，但 `transcribe_dy.py` 此前没有调用——**属于依赖列了却没用的漏点**。
+
+### Windows 控制台与 PowerShell 的编码陷阱
+
+- git-bash 终端是 GBK：中文 stdout 显示乱码（文件本身没问题）、打印 `⚠️/✅` 会 `UnicodeEncodeError: 'gbk' codec`。脚本里日志用 ASCII 前缀（`!!` / `>>`），或设 `PYTHONIOENCODING=utf-8`。
+- **无 BOM 的 `.ps1` 会被 Windows PowerShell 按 GBK 解析**，脚本里的中文路径字面量直接变乱码并报"路径中有非法字符"。对策：**`.ps1` 保持纯 ASCII，中文路径通过环境变量或 UTF-8 清单文件传入**，脚本内用 `[System.IO.File]::ReadAllLines($m, UTF8)` 读。
+- 校验落盘是否无 BOM，看首三字节即可（`efbbbf` = 有 BOM）；写 vault 笔记仍必须 `[System.IO.File]::WriteAllText($p,$t,[System.Text.UTF8Encoding]::new($false))`。
+
+### 本机环境陷阱：别信文档里的解释器路径
+
+skill 文档写的 `D:/ANACONDA/python.exe（torch 2.7 cu128 + faster-whisper）` 在这台机器上**是 `torch 2.12.0+cpu` 且根本没装 faster-whisper/ctranslate2**——路径存在但完全不可用。教训：**跨设备复用 skill 前先实测版本与 CUDA 可用性，不要因路径存在就直接采信文档**。同理 `python` 可能只解析到微软商店的占位 stub（`WindowsApps\python.exe`），它静默失败、不报错。
+
+### 内存与磁盘
+
+- 16GB 机器实测可用仅 0.6–1.6GB，主因是**向日葵（AweSun）的 `OrayVGC.sys` / `OrayUSBVHCI.sys` 驱动占用非分页池约 3.07GB**（正常应 <1GB）——**关普通程序腾不出来，只有停用该驱动或重启才能回收**。判断依据：`Get-Counter '\Memory\Pool Nonpaged Bytes'`。
+- 系统盘紧张（剩 12GB、93% 满）时，venv 和 Playwright 浏览器一律装到别的盘：`python -m venv D:\tools\dy-venv`、`PLAYWRIGHT_BROWSERS_PATH=D:\tools\ms-playwright`（否则 Chromium 默认吃掉 C 盘 700MB）。

@@ -7,7 +7,34 @@
 """
 import sys
 import json
+import os
 from faster_whisper import WhisperModel
+
+
+def load_model():
+    """优先按环境变量/CUDA 加载；CUDA 不可用时自动降级 CPU int8。"""
+    name = os.environ.get("WHISPER_MODEL", "medium")
+    want_dev = os.environ.get("WHISPER_DEVICE")          # 可强制 cuda / cpu
+    want_ct = os.environ.get("WHISPER_COMPUTE_TYPE")     # 可强制 float16 / int8 / int8_float16
+    attempts = []
+    if want_dev:
+        attempts.append((name, want_dev, want_ct or ("float16" if want_dev == "cuda" else "int8")))
+    else:
+        attempts += [
+            (name, "cuda", want_ct or "float16"),
+            (name, "cuda", "int8_float16"),
+            (name, "cpu", want_ct or "int8"),
+        ]
+    last = None
+    for mdl, dev, ct in attempts:
+        try:
+            m = WhisperModel(mdl, device=dev, compute_type=ct)
+            print(f"[model] loaded {mdl} device={dev} compute_type={ct}")
+            return m
+        except Exception as e:  # noqa: BLE001
+            last = e
+            print(f"[model] {dev}/{ct} 失败: {e}")
+    raise last
 
 
 def main():
@@ -17,7 +44,7 @@ def main():
     m4a = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else m4a.rsplit(".", 1)[0] + ".transcript.json"
 
-    model = WhisperModel("medium", device="cuda", compute_type="float16")
+    model = load_model()
     segments_iter, info = model.transcribe(
         m4a, beam_size=5, language="zh", vad_filter=True
     )

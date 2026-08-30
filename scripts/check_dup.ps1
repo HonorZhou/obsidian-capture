@@ -3,10 +3,14 @@
 
 param(
     [Parameter(Mandatory=$true)]
-    [string]$SourceUrl
+    [string]$SourceUrl,
+    [string]$VaultRoot
 )
 
-$vaultDir = "D:\WorkBuddy\Claw\Obsidian\Obsidian"
+# 跨设备：优先参数 -VaultRoot，其次环境变量 VAULT_ROOT，最后回退旧默认
+if (-not $VaultRoot) { $VaultRoot = $env:VAULT_ROOT }
+if (-not $VaultRoot) { $VaultRoot = "D:\WorkBuddy\Claw\Obsidian\Obsidian" }
+$vaultDir = $VaultRoot
 
 Write-Host "检查去重: $SourceUrl" -ForegroundColor Cyan
 

@@ -14,7 +14,7 @@
     # 从已保存的 HTML 解析（避免重复抓取）
     python wechat_fetch.py --file page.html -o body.md
 
-依赖: requests（venv: C:/Users/Administrator/.workbuddy/binaries/python/envs/default）
+依赖: requests（装在执行本脚本的 venv 内即可，跨设备无需固定解释器路径）
 踩坑备忘（2026-08-20 实测）:
     1. 正文 div 正则必须 <div[^>]*id="js_content"[^>]*> —— 真实 HTML 中
        id 前有 class 等属性，严格 <div id="js_content" 匹配不到。
