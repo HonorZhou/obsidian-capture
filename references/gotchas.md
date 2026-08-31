@@ -198,3 +198,70 @@ skill 文档写的 `D:/ANACONDA/python.exe（torch 2.7 cu128 + faster-whisper）
 
 - 16GB 机器实测可用仅 0.6–1.6GB，主因是**向日葵（AweSun）的 `OrayVGC.sys` / `OrayUSBVHCI.sys` 驱动占用非分页池约 3.07GB**（正常应 <1GB）——**关普通程序腾不出来，只有停用该驱动或重启才能回收**。判断依据：`Get-Counter '\Memory\Pool Nonpaged Bytes'`。
 - 系统盘紧张（剩 12GB、93% 满）时，venv 和 Playwright 浏览器一律装到别的盘：`python -m venv D:\tools\dy-venv`、`PLAYWRIGHT_BROWSERS_PATH=D:\tools\ms-playwright`（否则 Chromium 默认吃掉 C 盘 700MB）。
+
+## 2026-08-31 新增：把脚本改动推回 GitHub 的认证坑
+
+### 症状识别：push 无输出、远端不动，但 ls-remote 正常
+
+HTTPS push 在这台机器上**卡在凭据，不是网络**。特征组合非常好认：
+
+- `git push` **一个字都不输出**就结束了（或挂到被 timeout 杀掉），远端 SHA 不变；
+- 同一时刻 `git ls-remote` **秒级正常返回**。
+
+因为公开仓库的**读是匿名的，只有写要认证**。看到"读得通、写不通"就直接按认证问题查，别去怀疑网络或代理——本次先入为主当成网络故障，白跑了一轮 HTTP/1.1 + 五次退避重试。
+
+快速确认手段（让它立即失败而不是挂死）：
+
+```bash
+GIT_TERMINAL_PROMPT=0 git -c credential.interactive=false push origin master
+# fatal: Cannot prompt because user interactivity has been disabled.
+```
+
+`cmdkey /list | grep -i github` 返回空 = Windows 凭据管理器里从来没存过 GitHub 凭据；GCM（`credential.helper = manager`，来自 Git 的 **system 级**配置，global 里查不到）在无终端环境弹不出授权窗，于是静默阻塞。
+
+### 正解：走 SSH
+
+本机 `~/.ssh/id_ed25519` 已绑定 GitHub 账号，22 端口与 `ssh.github.com:443` 都能过：
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=15 -T git@github.com
+# Hi <用户>! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+443 那个是**备用通道**，专治 22 端口被封：`ssh -p 443 -T git@ssh.github.com`。
+
+一次性用显式 SSH 地址推送，**不改任何 git 配置**：
+
+```bash
+git push git@github.com:<用户>/<repo>.git master
+```
+
+只有想让以后裸 `git push` 也走 SSH，才需要 `git remote set-url origin git@github.com:...` —— 那会写 `.git/config`，属配置变更，须先征求用户同意。
+
+### 浅克隆的仓库不能直接 push
+
+`--depth 1` clone 出来的仓库 push 会被 GitHub 拒绝（`shallow update not allowed`）。推送前先补历史：
+
+```bash
+git fetch --unshallow
+test -f "$(git rev-parse --git-dir)/shallow" && echo "仍是浅仓库"
+```
+
+`fetch` 是匿名读，不需要凭据，但网络不稳时可能失败，要重试确认成功再推。
+
+### 用显式 URL push 之后要 fetch 校准
+
+`git push <显式URL> master` **不会更新 remote-tracking 引用**，于是 `git status` 会长期误显示"领先 origin 1 个提交"。补一次即可：
+
+```bash
+git fetch origin   # 之后 git rev-list --count origin/<branch>..HEAD 应为 0
+```
+
+### 提交身份缺失时别改全局配置
+
+新装 Git 常没有 `user.name/email`，直接 commit 报 `Author identity unknown`。**不要为省事去写全局 config**，用一次性参数、并沿用该仓库既有提交的作者身份（不同仓库的 GitHub noreply 邮箱可能不一致，本项目两个仓库就分别是 `96284073+HonorZhou@…` 与 `honorzhou@…`）：
+
+```bash
+git log -1 --format="%an <%ae>"
+git -c user.name="X" -c user.email="Y@users.noreply.github.com" commit -m "..."
+```
