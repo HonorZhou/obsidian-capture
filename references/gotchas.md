@@ -140,9 +140,14 @@ yt-dlp 的 Douyin 提取器要求 `Fresh cookies`，实测它真正需要的是 
 
 `--cookies-from-browser edge` 在 Edge 运行时会 **`PermissionError: [Errno 13] Permission denied: ...\Edge\User Data\Default\Network\Cookies`**（yt-dlp issue #7271）——浏览器独占锁定 cookie 库，连复制都不行。而且要求用户退出浏览器本身就是扰民。正确做法：**用 Playwright 自带 Chromium + 独立 profile 自己采 cookie**，写进 `cookies.txt` 后用 `--cookies`。
 
-### cookie 与下载必须在同一命令里背靠背
+### 固定顺序：cookie → 下载 → 再取元数据（**顺序反了就会失败**）
 
-`msToken` 时效只有几分钟。实测：刷完 cookie → 抓元数据（成功）→ 查格式列表 → 再下载，**就报 `Fresh cookies are needed` 了**。把「刷 cookie + 下载」写进同一个 shell 调用连续执行；中间不要插入耗时请求。
+`msToken` 时效只有几分钟，而且**`-J` 取元数据这一步本身就会消耗它**。两次对照实验：
+
+- ❌ **反例**（2026-08-31，韩成龙那条）：刷 cookie → 取元数据（成功）→ 下载 → 报 `Fresh cookies are needed`。元数据拿到了，下载却没赶上，整条链路白跑，只能重刷 cookie 再走一遍。
+- ✅ **正例**（2026-09-02，滚雪球 31 那条）：刷 cookie → **立即下载**（用 `-f "b[height<=576][vcodec^=hevc]/b[height<=576]/b"` 这种不依赖元数据的过滤器选格式）→ 下载成功后再补取元数据。一次通过。
+
+**规范**：把「刷 cookie + 下载」写进同一个 shell 调用连续执行；**选格式靠过滤器表达式，不要靠先查元数据拿 format_id**；标题/发布日期/互动数这些信息一律在下载完成之后再取（反正 mp4 已经到手，元数据失败也不影响重取）。
 
 ### `-S size` 会选到 4 倍大的文件
 
