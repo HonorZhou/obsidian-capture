@@ -140,27 +140,32 @@ yt-dlp 的 Douyin 提取器要求 `Fresh cookies`，实测它真正需要的是 
 
 `--cookies-from-browser edge` 在 Edge 运行时会 **`PermissionError: [Errno 13] Permission denied: ...\Edge\User Data\Default\Network\Cookies`**（yt-dlp issue #7271）——浏览器独占锁定 cookie 库，连复制都不行。而且要求用户退出浏览器本身就是扰民。正确做法：**用 Playwright 自带 Chromium + 独立 profile 自己采 cookie**，写进 `cookies.txt` 后用 `--cookies`。
 
-### 真正根因：持久化 profile 用旧了会失效，换全新 profile 立即恢复
+### 下载失败先做对照实验：是"管线坏了"还是"这条视频特殊"
 
-2026-09-04 一次完整排查，把前面两个错误结论都推翻了：
+`Fresh cookies (not necessarily logged in) are needed` 这个报错**很容易被误判成 cookie/管线问题**，
+从而在顺序、profile、重试上反复打转。本文件此前就有两个这样的错误结论（已删）。
 
-- 现象：某条视频反复报 `Fresh cookies (not necessarily logged in) are needed`，而 `dy_cookie.py` 日志显示 `msToken` **每次都抓到了**。
-- ❌ 错误结论一（已删）：「元数据请求消耗了 msToken 时效，所以必须 cookie→下载→再取元数据」——新顺序首次实战即失败。
-- ❌ 错误结论二（已删）：「msToken 接受与否不稳定，重试 2–3 次即可」——**同一个旧 profile 连续重试 3 次，3 次全败**，且 cookie 文件逐次变小（5300 → 5142 → 3907 字节）。
-- ✅ **验证出的根因**：只改一个变量——把 `DY_COOKIE_UDD` 指向**全新 profile 目录**——**第一次尝试就下载成功**，并且那次还首次抓到了 `webid`。
-
-**结论与对策**
-
-1. **持久化 profile 会随使用次数累积而被风控标记**（当天前十几条都正常，到第 16 条开始失败）。表现为 cookie 采集数量退化、`msToken` 虽在但不被接受。
-2. **失败时不要盲目重试同一 profile**——先换 profile：`export DY_COOKIE_UDD=<新目录>` 再跑 `dy_cookie.py`。
-3. **健康度自检**：`cookies.txt` 正常约 5.3–5.6 KB；若掉到 4 KB 以下，说明 profile 已退化，直接换新 profile，别浪费时间重试。
-4. 顺序（cookie 紧贴下载、元数据留到最后）**仍是好习惯**，但它只是省时间，**不是成败因素**——别再把它当根因。
+**一次 30 秒的对照实验即可定性**：用**同一份 cookies.txt**，去 `--simulate` 一条**当天已成功入库过的视频**。
 
 ```bash
-# profile 退化后的恢复动作（一条命令）
-export DY_COOKIE_UDD="D:/tools/pw-profile-$(date +%s)"
-python scripts/dy_cookie.py cookies.txt --timeout 60
+# 对照组：已知可成功的视频
+yt_dlp --cookies cookies.txt --simulate        -f "b[height<=576][vcodec^=hevc]/b[height<=576]/b"        "https://www.douyin.com/video/<今天成功过的ID>"
+
+# 实验组：失败的那条
+yt_dlp --cookies cookies.txt --simulate "https://www.douyin.com/video/<失败ID>"
 ```
+
+- **对照组成功、实验组失败** → **问题在这条视频**（需登录、区域/年龄受限、已删除或非公开），
+  管线无恙。**不要再去改脚本或重试 profile**，直接告诉用户这条取不到，请其提供文案或换链接。
+- **两组都失败** → 才是 cookie/profile/IP 层面的问题，此时再换 `DY_COOKIE_UDD` 重采、或降低频率。
+
+实测案例（2026-09-04）：某条视频连续 6 次失败（含换全新 profile、含 5 轮重采），
+用同一 cookie 对照另一条当天已成功的视频则**正常返回格式列表**——即属于第一种情况，
+该视频本身受限，与前面所有猜测无关。
+
+**方法论教训**：本文件里先后写进过两个错误结论——「取元数据消耗 msToken 时效故须改顺序」
+与「持久 profile 被风控标记，换 profile 即解决」。两者都是拿 **n=1 的成功/失败当因果证据**，
+且都在写进仓库后很快被下一次运行推翻。**归因前请先做对照实验**；对照不成立的结论不要写进本文件。
 
 ### `-S size` 会选到 4 倍大的文件
 
