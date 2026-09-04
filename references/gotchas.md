@@ -167,6 +167,29 @@ yt_dlp --cookies cookies.txt --simulate "https://www.douyin.com/video/<失败ID>
 与「持久 profile 被风控标记，换 profile 即解决」。两者都是拿 **n=1 的成功/失败当因果证据**，
 且都在写进仓库后很快被下一次运行推翻。**归因前请先做对照实验**；对照不成立的结论不要写进本文件。
 
+### yt-dlp 单条失败时的兜底：browser_fetch.py（已实测）
+
+对照实验判定「管线正常、只有这条失败」之后，**不要就此放弃这条视频**。用浏览器兜底：
+
+```bash
+python scripts/browser_fetch.py "<分享链接或视频ID>" -o temp/dy_x/video.mp4
+python scripts/browser_fetch.py "<ID>" --meta-only     # 只要元数据
+```
+
+它做的事：Playwright 打开视频页 → 捕获页面**自己发出的** `aweme/v1/web/aweme/detail` 响应
+（`status_code=0`）→ 从同一份响应里同时取出 **元数据**（desc / author / create_time /
+statistics / 时长）与 **`video.play_addr.url_list`** → 带 UA 与 `Referer: https://www.douyin.com/`
+用 curl 直接下载。
+
+要点与边界：
+
+- **不使用任何账号凭据**，等价于"用浏览器打开这个公开页面"。
+- 元数据比 yt-dlp 更可靠：实测有 `-J` 返回 `null` 而这条路正常拿到全部字段的例子，
+  **连真实发布日期都以它为准**（别信分享文本里的日期）。
+- **拿不到 `play_addr` 时就是真取不到**（需登录才能播放），脚本会以非零码退出并说明原因；
+  此时才该转去做"请用户提供文案"的降级路径。
+- 页面完全被登录墙/验证墙拦截、捕获不到 detail 响应时，同样会明确报错，不会静默产出空文件。
+
 ### `-S size` 会选到 4 倍大的文件
 
 想挑最小文件而用 `-S size`，结果选中的是 `download_addr-*`（带水印的下载源，实测 44.5MB），而不是真正的最小档 `bytevc1_540p_*`（h265，同片仅 8–30MB）。**正确做法：自己解析 `-J` 输出的 `formats[].filesize` 排序**，取 `bytevc1_540p*`。
